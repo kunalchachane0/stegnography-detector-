@@ -1,0 +1,7 @@
+{
+  "name": "StegoGuard: Image Steganography Detection",
+  "description": "A forensic-grade image analysis suite designed to detect hidden data (steganography) using bit-plane visualization, noise analysis, and Gemini-powered forensic reasoning.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
