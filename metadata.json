@@ -1,0 +1,7 @@
+{
+  "name": "StegnoSafe: Pro LSB Steganography",
+  "description": "Securely hide and extract messages within images using advanced LSB bit-plane modulation. Privacy focused, client-side processing.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
