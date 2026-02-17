@@ -1,6 +1,6 @@
 {
-  "name": "StegoGuard: Image Steganography Detection",
-  "description": "A forensic-grade image analysis suite designed to detect hidden data (steganography) using bit-plane visualization, noise analysis, and Gemini-powered forensic reasoning.",
+  "name": "StegnoSafe: Pro LSB Steganography",
+  "description": "Securely hide and extract messages within images using advanced LSB bit-plane modulation. Privacy focused, client-side processing.",
   "requestFramePermissions": [
     "camera"
   ]

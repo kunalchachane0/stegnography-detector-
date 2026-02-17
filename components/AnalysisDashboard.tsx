@@ -1,43 +1,53 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AnalysisResult } from '../types';
-import { getBitPlane, getNoiseFilter, getHistogramData, HistogramData } from '../utils/imageProcessing';
+import { 
+  getBitPlane, 
+  getNoiseFilter, 
+  getHistogramData, 
+  calculateEntropyMap,
+  sonifyBitPlane,
+  HistogramData 
+} from '../utils/imageProcessing';
 import { 
   ShieldAlert, 
-  Search, 
   Layers, 
   Activity, 
   ArrowLeft,
-  Download,
-  ScanSearch,
-  BarChart3,
-  Terminal,
   Crosshair,
+  Zap,
+  Eye,
+  Radar,
+  LineChart,
+  RefreshCcw,
   Maximize2,
-  // Fix: Added missing Info icon import
-  Info
+  Volume2,
+  Play,
+  Square
 } from 'lucide-react';
 
 interface Props {
   imageSrc: string;
+  rawBuffer: ArrayBuffer | null;
+  mimeType: string;
   result: AnalysisResult | null;
   onReset: () => void;
 }
 
-const AnalysisDashboard: React.FC<Props> = ({ imageSrc, result, onReset }) => {
+const AnalysisDashboard: React.FC<Props> = ({ imageSrc, rawBuffer, mimeType, result, onReset }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const [activeTab, setActiveTab] = useState<'ai' | 'visual' | 'forensic' | 'histogram' | 'entropy' | 'audio'>('ai');
   const [selectedPlane, setSelectedPlane] = useState<number>(0);
-  const [selectedChannel, setSelectedChannel] = useState<'R' | 'G' | 'B' | 'Y' | 'Cb' | 'Cr'>('R');
+  const [selectedChannel, setSelectedChannel] = useState<'R' | 'G' | 'B'>('R');
   const [bitPlaneUrl, setBitPlaneUrl] = useState<string>('');
   const [noiseUrl, setNoiseUrl] = useState<string>('');
+  const [entropyUrl, setEntropyUrl] = useState<string>('');
   const [histogram, setHistogram] = useState<HistogramData>({ r: [], g: [], b: [] });
-  const [activeTab, setActiveTab] = useState<'visual' | 'forensic' | 'ai' | 'histogram'>('ai');
-  const [logs, setLogs] = useState<string[]>([]);
-  const [inspectorData, setInspectorData] = useState<{ x: number, y: number, r: number, g: number, b: number, a: number } | null>(null);
-
-  const addLog = (msg: string) => {
-    setLogs(prev => [ `[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 19)]);
-  };
+  const [inspector, setInspector] = useState<{ x: number, y: number, pixels: any[] } | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     const img = new Image();
@@ -49,218 +59,193 @@ const AnalysisDashboard: React.FC<Props> = ({ imageSrc, result, onReset }) => {
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0);
-        
-        addLog("Image loaded into forensic buffer.");
-        addLog(`Dimensions: ${img.width}x${img.height}px`);
-        updateAnalysis(canvas);
+        setBitPlaneUrl(getBitPlane(canvas, selectedChannel, selectedPlane));
+        setNoiseUrl(getNoiseFilter(canvas));
+        setEntropyUrl(calculateEntropyMap(canvas));
+        setHistogram(getHistogramData(canvas));
       }
     };
+    return () => stopAudio();
   }, [imageSrc]);
-
-  const updateAnalysis = (canvas: HTMLCanvasElement) => {
-    addLog("Updating bit-plane projections...");
-    setBitPlaneUrl(getBitPlane(canvas, selectedChannel, selectedPlane));
-    setNoiseUrl(getNoiseFilter(canvas));
-    setHistogram(getHistogramData(canvas));
-  };
 
   useEffect(() => {
     if (canvasRef.current) {
       setBitPlaneUrl(getBitPlane(canvasRef.current, selectedChannel, selectedPlane));
-      addLog(`Viewing ${selectedChannel} Bit ${selectedPlane}`);
     }
+    if (isPlaying) stopAudio();
   }, [selectedPlane, selectedChannel]);
+
+  const stopAudio = () => {
+    if (audioSourceRef.current) {
+      audioSourceRef.current.stop();
+      audioSourceRef.current = null;
+    }
+    setIsPlaying(false);
+  };
+
+  const handleSonify = async () => {
+    if (isPlaying) {
+      stopAudio();
+      return;
+    }
+    if (!canvasRef.current) return;
+    
+    setIsPlaying(true);
+    const buffer = await sonifyBitPlane(canvasRef.current, selectedChannel, selectedPlane);
+    
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    const source = audioCtxRef.current.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(audioCtxRef.current.destination);
+    source.start();
+    audioSourceRef.current = source;
+  };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!canvasRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.floor(((e.clientX - rect.left) / rect.width) * canvasRef.current.width);
-    const y = Math.floor(((e.clientY - rect.top) / rect.height) * canvasRef.current.height);
-    
+    const scaleX = canvasRef.current.width / rect.width;
+    const scaleY = canvasRef.current.height / rect.height;
+    const x = Math.floor((e.clientX - rect.left) * scaleX);
+    const y = Math.floor((e.clientY - rect.top) * scaleY);
+
     const ctx = canvasRef.current.getContext('2d');
     if (ctx) {
-      const p = ctx.getImageData(x, y, 1, 1).data;
-      setInspectorData({ x, y, r: p[0], g: p[1], b: p[2], a: p[3] });
+      const area = 2;
+      const pixels = [];
+      for (let dy = -area; dy <= area; dy++) {
+        for (let dx = -area; dx <= area; dx++) {
+          const p = ctx.getImageData(x + dx, y + dy, 1, 1).data;
+          pixels.push({ r: p[0], g: p[1], b: p[2], bits: [p[0]&1, p[1]&1, p[2]&1] });
+        }
+      }
+      setInspector({ x: e.clientX, y: e.clientY, pixels });
     }
   };
 
-  const renderHistogram = () => {
-    const maxVal = Math.max(...histogram.r, ...histogram.g, ...histogram.b, 1);
-    const height = 150;
-    const width = 256;
-
-    const getPath = (data: number[]) => {
-      if (data.length === 0) return "";
-      return data.map((val, i) => `${i},${height - (val / maxVal) * height}`).join(' L ');
-    };
-
-    return (
-      <div className="w-full bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
-        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-indigo-400" />
-          Color Space Distribution
-        </h3>
-        <div className="relative h-[160px] w-full bg-black/50 rounded border border-slate-800 p-2">
-          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full preserve-aspect-ratio" preserveAspectRatio="none">
-            <path d={`M 0,${height} L ${getPath(histogram.r)} L ${width},${height} Z`} fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" strokeWidth="1" />
-            <path d={`M 0,${height} L ${getPath(histogram.g)} L ${width},${height} Z`} fill="rgba(34, 197, 94, 0.2)" stroke="#22c55e" strokeWidth="1" />
-            <path d={`M 0,${height} L ${getPath(histogram.b)} L ${width},${height} Z`} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth="1" />
-          </svg>
-        </div>
-        <p className="text-xs text-slate-500 italic">Spikes or "combing" in histograms can indicate color-table based steganography.</p>
-      </div>
-    );
-  };
-
   return (
-    <div className="min-h-screen bg-slate-950 p-4 md:p-8 flex flex-col gap-6">
-      <div className="max-w-7xl mx-auto w-full space-y-6">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <button onClick={onReset} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors group">
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span className="font-mono text-sm uppercase tracking-tighter">Exit forensic session</span>
+    <div className="min-h-screen bg-[#020617] p-8 flex flex-col gap-8 font-sans animate-in fade-in duration-700">
+      <div className="max-w-7xl mx-auto w-full space-y-8">
+        <header className="flex justify-between items-center bg-slate-900/50 p-5 rounded-[2rem] border border-slate-800 backdrop-blur-xl">
+          <button onClick={onReset} className="flex items-center gap-3 text-slate-400 hover:text-white transition-all uppercase font-black text-xs tracking-widest pl-4">
+            <ArrowLeft className="w-5 h-5" /> Exit Forensics
           </button>
-          <div className="flex items-center gap-4">
-             <div className="px-4 py-1.5 rounded bg-slate-900 border border-slate-800 flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${result ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]' : 'bg-yellow-500 animate-pulse'}`} />
-                <span className="text-xs font-mono font-bold text-slate-300 uppercase tracking-widest">
-                  {result ? 'AI Analysis Complete' : 'AI Processing...'}
-                </span>
-             </div>
+          <div className="flex gap-2 p-1.5 bg-black/40 rounded-2xl border border-slate-800">
+            {['ai', 'visual', 'forensic', 'entropy', 'histogram'].map(t => (
+              <button 
+                key={t}
+                onClick={() => setActiveTab(t as any)}
+                className={`px-7 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === t ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                {t}
+              </button>
+            ))}
           </div>
-        </div>
+        </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Main Visualizer */}
-          <div className="lg:col-span-8 flex flex-col gap-6">
-            <div className="flex gap-2 p-1 bg-slate-900 border border-slate-800 rounded-lg w-fit">
-              {[
-                {id: 'ai', icon: ScanSearch, label: 'Summary'},
-                {id: 'visual', icon: Layers, label: 'Bit Planes'},
-                {id: 'forensic', icon: Activity, label: 'Noise'},
-                {id: 'histogram', icon: BarChart3, label: 'Stats'}
-              ].map(tab => (
-                <button 
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-4 py-1.5 rounded text-xs font-bold uppercase transition-all flex items-center gap-2 ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  <tab.icon className="w-3.5 h-3.5" />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-8 space-y-8">
             <div 
-              className="relative group bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden min-h-[500px] flex items-center justify-center cursor-crosshair"
+              className="relative bg-black rounded-[3rem] overflow-hidden border border-slate-800/50 h-[650px] flex items-center justify-center cursor-none group shadow-2xl"
               onMouseMove={handleMouseMove}
-              onMouseLeave={() => setInspectorData(null)}
+              onMouseLeave={() => setInspector(null)}
             >
-              {activeTab === 'ai' && <img src={imageSrc} className="max-w-full max-h-[600px] object-contain" alt="Target" />}
-              {activeTab === 'visual' && <img src={bitPlaneUrl} className="max-w-full max-h-[600px] object-contain" alt="Bit Plane" />}
-              {activeTab === 'forensic' && <img src={noiseUrl} className="max-w-full max-h-[600px] object-contain" alt="Noise Analysis" />}
+              {activeTab === 'ai' && <img src={imageSrc} className="max-w-full max-h-full object-contain animate-in zoom-in-95 duration-500" alt="Target" />}
+              {activeTab === 'visual' && <img src={bitPlaneUrl} className="max-w-full max-h-full object-contain animate-in fade-in duration-300" alt="Plane" />}
+              {activeTab === 'forensic' && <img src={noiseUrl} className="max-w-full max-h-full object-contain animate-in fade-in duration-300" alt="Noise" />}
+              {activeTab === 'entropy' && <img src={entropyUrl} className="max-w-full max-h-full object-contain animate-in fade-in duration-300" alt="Entropy" />}
               {activeTab === 'histogram' && (
-                <div className="w-full h-full p-12 flex items-center justify-center">
-                   {renderHistogram()}
+                <div className="flex flex-col items-center gap-8 opacity-40">
+                  <LineChart className="w-24 h-24 animate-pulse" />
+                  <span className="text-xs font-black uppercase tracking-[0.4em]">Scanning pair-values...</span>
                 </div>
               )}
 
-              {/* Inspector Overlay */}
-              {inspectorData && (
-                <div className="absolute top-4 left-4 bg-slate-950/90 border border-slate-800 p-3 rounded-lg backdrop-blur-md pointer-events-none z-20 font-mono text-[10px] min-w-[140px] shadow-2xl">
-                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-800">
-                    <Crosshair className="w-3 h-3 text-indigo-400" />
-                    <span className="text-slate-300">X:{inspectorData.x} Y:{inspectorData.y}</span>
+              {/* Forensic Loupe */}
+              {inspector && (
+                <div 
+                  className="fixed pointer-events-none z-[100] w-64 h-64 rounded-full border-4 border-indigo-500 bg-slate-900/95 backdrop-blur-xl shadow-[0_0_50px_rgba(79,70,229,0.3)] flex flex-col overflow-hidden"
+                  style={{ left: inspector.x + 30, top: inspector.y - 128 }}
+                >
+                  <div className="grid grid-cols-5 h-full">
+                    {inspector.pixels.map((p, i) => (
+                      <div key={i} className="flex flex-col border-[0.5px] border-white/5" style={{ backgroundColor: `rgb(${p.r},${p.g},${p.b})` }}>
+                        {i === 12 && <div className="m-auto w-2 h-2 bg-white rounded-full shadow-[0_0_12px_white]" />}
+                      </div>
+                    ))}
                   </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between"><span className="text-red-400">R:</span> <span>{inspectorData.r}</span></div>
-                    <div className="flex justify-between"><span className="text-green-400">G:</span> <span>{inspectorData.g}</span></div>
-                    <div className="flex justify-between"><span className="text-blue-400">B:</span> <span>{inspectorData.b}</span></div>
-                    <div className="flex justify-between text-slate-500 italic mt-2">
-                       <span>Hex:</span>
-                       <span>#{inspectorData.r.toString(16).padStart(2,'0')}{inspectorData.g.toString(16).padStart(2,'0')}{inspectorData.b.toString(16).padStart(2,'0')}</span>
-                    </div>
+                  <div className="bg-indigo-600 p-4 text-[11px] font-black text-white flex justify-between items-center px-5">
+                    <span className="tracking-widest">LSB: {inspector.pixels[12].bits.join('')}</span>
+                    <span className="opacity-70 font-mono">{inspector.pixels[12].r},{inspector.pixels[12].g},{inspector.pixels[12].b}</span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Controls for Visual Analysis */}
             {activeTab === 'visual' && (
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6">
-                <div className="flex flex-wrap gap-4 items-center">
-                  <div className="flex gap-1 bg-black/30 p-1 rounded-lg border border-slate-800">
-                    {(['R', 'G', 'B', 'Y', 'Cb', 'Cr'] as const).map(ch => (
-                      <button
-                        key={ch}
-                        onClick={() => setSelectedChannel(ch)}
-                        className={`px-3 py-1 text-[10px] font-bold rounded transition-all ${selectedChannel === ch ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-slate-800'}`}
-                      >
-                        {ch}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="h-4 w-px bg-slate-800" />
-                  <div className="flex gap-1 overflow-x-auto pb-1">
-                    {[0, 1, 2, 3, 4, 5, 6, 7].map(p => (
-                      <button
-                        key={p}
-                        onClick={() => setSelectedPlane(p)}
-                        className={`w-8 h-8 flex items-center justify-center text-xs font-mono rounded border transition-all ${selectedPlane === p ? 'bg-white text-slate-950 font-bold border-white' : 'border-slate-800 text-slate-500 hover:border-slate-600'}`}
-                      >
-                        {p}
-                      </button>
+              <div className="flex flex-col md:flex-row gap-8 p-10 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] animate-in slide-in-from-bottom-6 duration-700 backdrop-blur-xl">
+                <div className="space-y-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-500 block px-2">Channel Extraction</span>
+                  <div className="flex gap-3">
+                    {['R', 'G', 'B'].map(c => (
+                      <button key={c} onClick={() => setSelectedChannel(c as any)} className={`px-7 py-3 rounded-xl text-xs font-black transition-all ${selectedChannel === c ? 'bg-indigo-600 text-white shadow-xl' : 'bg-black/40 text-slate-500 border border-slate-800'}`}>{c}</button>
                     ))}
                   </div>
                 </div>
-                <div className="text-[11px] text-slate-500 font-mono leading-relaxed bg-black/20 p-3 rounded">
-                  <Info className="w-3 h-3 inline mr-2 text-indigo-400" />
-                  STATIONARY ANALYSIS: LSB (Bit 0) typically contains high-entropy "salt" noise in steganographic images. 
-                  Check Cb/Cr bit 0 for modern JPEG-based hiding techniques.
+                <div className="h-16 w-px bg-slate-800 self-center hidden md:block" />
+                <div className="flex-1 space-y-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-500 block px-2">Bit Modulation Plane (0-7)</span>
+                  <div className="flex gap-2.5 overflow-x-auto no-scrollbar pb-2">
+                    {[0,1,2,3,4,5,6,7].map(p => (
+                      <button key={p} onClick={() => setSelectedPlane(p)} className={`w-11 h-11 rounded-xl border flex items-center justify-center text-sm font-black transition-all ${selectedPlane === p ? 'bg-white text-black shadow-xl scale-110' : 'bg-black/40 border-slate-800 text-slate-500'}`}>{p}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="h-16 w-px bg-slate-800 self-center hidden md:block" />
+                <div className="space-y-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-500 block px-2">Auditory Probe</span>
+                  <button 
+                    onClick={handleSonify}
+                    className={`w-full md:w-auto px-10 py-3.5 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${isPlaying ? 'bg-red-600 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/30'}`}
+                  >
+                    {isPlaying ? <Square className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                    {isPlaying ? 'Mute' : 'Listen'}
+                  </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Right Column: AI Report & Forensic Console */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
-            
-            {/* AI Result Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <ShieldAlert className="w-5 h-5 text-indigo-400" />
-                <h2 className="text-sm font-bold uppercase tracking-widest text-slate-300">Forensic Assessment</h2>
+          <div className="lg:col-span-4 space-y-8 animate-in slide-in-from-right-8 duration-1000">
+            <div className="bg-slate-900/40 border border-slate-800 rounded-[2.5rem] p-10 shadow-2xl space-y-10 backdrop-blur-xl">
+              <div className="flex items-center gap-4 text-indigo-400 border-b border-slate-800 pb-8">
+                <div className="p-4 bg-indigo-600/10 rounded-2xl"><ShieldAlert className="w-7 h-7" /></div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] opacity-40">Reasoning Engine</h3>
+                  <h2 className="text-base font-black">Expert Conclusion</h2>
+                </div>
               </div>
-              
               {!result ? (
-                <div className="py-12 flex flex-col items-center justify-center gap-4 text-center">
-                  <div className="relative">
-                    <div className="w-12 h-12 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-                    <ScanSearch className="w-4 h-4 text-indigo-400 absolute inset-0 m-auto animate-pulse" />
-                  </div>
-                  <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Running AI Classifiers...</p>
+                <div className="py-24 flex flex-col items-center gap-8 text-slate-600">
+                  <RefreshCcw className="w-12 h-12 animate-spin opacity-40" />
+                  <span className="text-xs font-black uppercase tracking-[0.4em]">Analyzing Traces...</span>
                 </div>
               ) : (
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                  <div className={`p-4 rounded-lg border flex flex-col gap-1 ${
-                    result.likelihood === 'Detected' ? 'bg-red-500/10 border-red-500/50' : 
-                    result.likelihood === 'High' ? 'bg-orange-500/10 border-orange-500/50' : 'bg-slate-950 border-slate-800'
-                  }`}>
-                    <span className="text-[10px] uppercase font-bold text-slate-500">Threat Level</span>
-                    <span className={`text-xl font-bold font-mono ${
-                      result.likelihood === 'Detected' ? 'text-red-500' : 'text-indigo-400'
-                    }`}>{result.likelihood}</span>
+                <div className="space-y-10 animate-in fade-in slide-in-from-top-4 duration-700">
+                   <div className={`p-8 rounded-2xl border flex flex-col gap-3 ${result.likelihood === 'Detected' ? 'bg-red-500/10 border-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.1)]' : 'bg-slate-950/80 border-slate-800'}`}>
+                    <span className="text-[11px] font-black uppercase text-slate-500 tracking-[0.2em]">Signal Presence Confidence</span>
+                    <span className={`text-3xl font-black font-mono tracking-tighter ${result.likelihood === 'Detected' ? 'text-red-500' : 'text-indigo-400'}`}>{result.likelihood}</span>
                   </div>
-                  <div className="text-xs text-slate-400 leading-relaxed max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                    {result.reasoning}
-                  </div>
-                  <div className="space-y-2">
-                    {result.anomalies.slice(0, 3).map((a, i) => (
-                      <div key={i} className="flex items-start gap-2 text-[11px] text-slate-500 bg-black/20 p-2 rounded border border-slate-800/50">
-                        <span className="text-indigo-400">►</span> {a}
+                  <p className="text-sm text-slate-400 leading-loose font-medium bg-black/30 p-8 rounded-2xl border border-white/5">{result.reasoning}</p>
+                  <div className="space-y-5">
+                    <span className="text-xs font-black uppercase text-slate-500 tracking-widest block">Detected Indicators</span>
+                    {result.anomalies.map((a, i) => (
+                      <div key={i} className="flex gap-4 text-sm text-slate-500 font-bold items-start group p-1">
+                        <span className="text-indigo-500 group-hover:scale-125 transition-transform">▸</span> {a}
                       </div>
                     ))}
                   </div>
@@ -268,34 +253,25 @@ const AnalysisDashboard: React.FC<Props> = ({ imageSrc, result, onReset }) => {
               )}
             </div>
 
-            {/* Forensic Console (Authenticity Factor) */}
-            <div className="flex-1 bg-black border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 min-h-[300px]">
-               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <div className="flex items-center gap-2 text-emerald-500">
-                    <Terminal className="w-4 h-4" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Forensic Console</span>
-                  </div>
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 rounded-full bg-slate-800" />
-                    <div className="w-2 h-2 rounded-full bg-slate-800" />
-                    <div className="w-2 h-2 rounded-full bg-slate-800" />
-                  </div>
+            <div className="bg-indigo-600 rounded-[2.5rem] p-12 text-white shadow-[0_0_50px_rgba(79,70,229,0.3)] relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-12 opacity-10 scale-[2] rotate-12 group-hover:rotate-45 transition-transform duration-1000">
+                  <Zap className="w-24 h-24" />
                </div>
-               <div className="flex-1 font-mono text-[10px] text-emerald-500/80 overflow-y-auto space-y-1 custom-scrollbar">
-                  {logs.map((log, i) => (
-                    <div key={i} className={i === 0 ? "text-emerald-400 animate-pulse" : ""}>
-                      {log}
-                    </div>
-                  ))}
-                  {logs.length === 0 && <div className="text-slate-700 italic">No activity detected...</div>}
+               <div className="relative z-10 space-y-8">
+                  <div className="flex items-center gap-4">
+                    <Maximize2 className="w-7 h-7" />
+                    <h3 className="text-sm font-black uppercase tracking-[0.2em]">Forensic Logic</h3>
+                  </div>
+                  <p className="text-sm opacity-90 leading-relaxed font-bold italic">"Non-random patterns in the noise floor are characteristic of digital signals. Modern steganography creates broadband static that requires auditory and visual cross-referencing to confirm protocol types."</p>
+                  <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                    <div className="h-full bg-white w-2/3 animate-pulse shadow-[0_0_15px_white]" />
+                  </div>
                </div>
             </div>
-
           </div>
         </div>
-
-        <canvas ref={canvasRef} className="hidden" />
       </div>
+      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 };

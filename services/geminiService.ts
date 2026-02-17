@@ -6,24 +6,24 @@ export const analyzeImageWithAI = async (
   base64Image: string,
   mimeType: string
 ): Promise<AnalysisResult> => {
-  // Fix: Initializing strictly as per guidelines
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
-    Perform a forensic steganography analysis on this image. 
-    Act as a digital forensics expert. Look for:
-    1. Visual artifacts consistent with LSB (Least Significant Bit) insertion.
-    2. Inconsistent noise patterns (especially high-frequency noise in smooth areas).
-    3. Compression anomalies or unusual color distributions.
-    4. Any signs of hidden patterns, grids, or messages.
-
-    If you detect clear signs of manipulation, provide detailed reasoning.
-    If the image looks clean, explain why it might be safe but note the limitations of visual analysis.
+    Act as a Tier-3 Digital Forensics Investigator. Perform an exhaustive steganographic audit on this image.
+    
+    CRITICAL INSPECTION CRITERIA:
+    1. SCATTERED LSB PROTOCOL: Check for pseudo-random noise distribution across ALL bit-planes (R,G,B bits 0-2).
+    2. ENTROPY ANOMALIES: Does the noise floor vary unnaturally in smooth vs. textured regions?
+    3. ENCRYPTION ARTIFACTS: High-entropy LSB data often suggests encrypted payloads (AES/GCM). 
+    4. HISTOGRAM ATTACK: Are there "pair of values" artifacts in the color frequency distribution?
+    
+    If you suspect hidden data, characterize the suspected protocol (Sequential vs Scattered).
+    Respond ONLY in JSON.
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3-pro-preview",
       contents: {
         parts: [
           { inlineData: { data: base64Image.split(',')[1], mimeType } },
@@ -38,16 +38,11 @@ export const analyzeImageWithAI = async (
             likelihood: {
               type: Type.STRING,
               enum: ['Low', 'Medium', 'High', 'Detected'],
-              description: "The estimated likelihood of hidden data being present."
             },
-            reasoning: {
-              type: Type.STRING,
-              description: "Detailed expert analysis of the image features."
-            },
+            reasoning: { type: Type.STRING },
             anomalies: {
               type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "List of specific visual or technical anomalies detected."
+              items: { type: Type.STRING }
             },
             metadata: {
               type: Type.OBJECT,
@@ -58,8 +53,7 @@ export const analyzeImageWithAI = async (
             },
             suggestions: {
               type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Recommended next steps for further investigation."
+              items: { type: Type.STRING }
             }
           },
           required: ["likelihood", "reasoning", "anomalies", "suggestions"]
@@ -67,11 +61,10 @@ export const analyzeImageWithAI = async (
       }
     });
 
-    // Fix: Using response.text property directly
     const result = JSON.parse(response.text || "{}");
     return result as AnalysisResult;
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
-    throw new Error("Failed to perform AI forensics analysis.");
+    throw new Error("AI Reasoning Engine offline.");
   }
 };
