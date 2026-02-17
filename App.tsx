@@ -364,7 +364,7 @@ const App: React.FC = () => {
 
   return (
     <div className={`min-h-screen transition-all duration-500 font-sans ${theme === 'dark' ? 'dark text-slate-100 bg-[#020617]' : 'text-slate-900 bg-slate-50'}`}>
-      <header className="border-b border-slate-200 dark:border-slate-800/50 backdrop-blur-xl sticky top-0 z-50 px-8 h-20 flex items-center justify-between">
+      <header className="border-b border-slate-200 dark:border-slate-800/50 backdrop-blur-xl sticky top-0 z-50 px-4 sm:px-6 md:px-8 h-20 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-indigo-500/40 rotate-3">
             <ShieldCheck className="text-white w-7 h-7" />
@@ -390,7 +390,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-8 py-12 space-y-12">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-12 space-y-12">
         <div className="flex flex-col items-center gap-8">
           <div className="flex bg-white dark:bg-slate-900/40 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl">
             {['encode', 'decode'].map((t: any) => (
@@ -643,7 +643,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      <footer className="max-w-7xl mx-auto px-8 py-16 border-t border-slate-200 dark:border-slate-800/50 flex flex-col md:flex-row justify-between items-center gap-10 text-slate-500 text-xs font-bold uppercase tracking-[0.1em] mt-12">
+      <footer className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-16 border-t border-slate-200 dark:border-slate-800/50 flex flex-col md:flex-row justify-between items-center gap-10 text-slate-500 text-xs font-bold uppercase tracking-[0.1em] mt-12">
          <div className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
               <ShieldCheck className="w-5 h-5 text-indigo-500" />
