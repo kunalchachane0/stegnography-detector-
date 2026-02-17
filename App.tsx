@@ -97,12 +97,20 @@ const HackingIntro: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
           <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {logs.map((log, i) => (
               <div key={i} className="flex gap-4 text-xs font-bold tracking-widest">
+<<<<<<< HEAD
                 <span className="text-indigo-500">{'>>'}</span>
+=======
+                <span className="text-indigo-500">>></span>
+>>>>>>> 78dc27969bb0357b91ba688436009cdf331c2563
                 <span className="text-slate-300">{log}</span>
               </div>
             ))}
             <div className="flex gap-4 text-xs font-black animate-pulse">
+<<<<<<< HEAD
               <span className="text-indigo-500">{'>>'}</span>
+=======
+              <span className="text-indigo-500">>></span>
+>>>>>>> 78dc27969bb0357b91ba688436009cdf331c2563
               <span className="text-white">_</span>
             </div>
           </div>
