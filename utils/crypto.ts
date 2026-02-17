@@ -32,9 +32,8 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
   );
 }
 
-export async function encryptData(text: string, password: string): Promise<Uint8Array> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
+export async function encryptData(data: string | Uint8Array, password: string): Promise<Uint8Array> {
+  const payload = typeof data === 'string' ? new TextEncoder().encode(data) : data;
   const salt = crypto.getRandomValues(new Uint8Array(SALT_SIZE));
   const iv = crypto.getRandomValues(new Uint8Array(IV_SIZE));
 
@@ -42,7 +41,7 @@ export async function encryptData(text: string, password: string): Promise<Uint8
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     key,
-    data
+    payload
   );
 
   const combined = new Uint8Array(SALT_SIZE + IV_SIZE + ciphertext.byteLength);
@@ -53,7 +52,7 @@ export async function encryptData(text: string, password: string): Promise<Uint8
   return combined;
 }
 
-export async function decryptData(combined: Uint8Array, password: string): Promise<string> {
+export async function decryptData(combined: Uint8Array, password: string): Promise<Uint8Array> {
   try {
     const salt = combined.slice(0, SALT_SIZE);
     const iv = combined.slice(SALT_SIZE, SALT_SIZE + IV_SIZE);
@@ -66,7 +65,7 @@ export async function decryptData(combined: Uint8Array, password: string): Promi
       ciphertext
     );
 
-    return new TextDecoder().decode(decrypted);
+    return new Uint8Array(decrypted);
   } catch (e) {
     throw new Error('Decryption failed. Incorrect password or corrupted data.');
   }

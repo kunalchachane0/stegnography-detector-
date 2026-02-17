@@ -8,9 +8,20 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+      
       body {
         font-family: 'Inter', sans-serif;
       }
+
+      @keyframes glitch {
+        0% { transform: translate(0); }
+        20% { transform: translate(-2px, 2px); }
+        40% { transform: translate(-2px, -2px); }
+        60% { transform: translate(2px, 2px); }
+        80% { transform: translate(2px, -2px); }
+        100% { transform: translate(0); }
+      }
+
       .custom-scrollbar::-webkit-scrollbar {
         width: 6px;
       }
@@ -23,6 +34,14 @@
       }
       .dark .custom-scrollbar::-webkit-scrollbar-thumb {
         background: rgba(255,255,255,0.1);
+      }
+
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
       }
     </style>
   <script type="importmap">

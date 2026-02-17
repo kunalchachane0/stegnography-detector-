@@ -28,7 +28,13 @@ import {
   BarChart3,
   Fingerprint,
   Terminal,
-  Cpu
+  Cpu,
+  ShieldAlert,
+  Zap,
+  ChevronRight,
+  Binary,
+  Type,
+  File as FileIcon
 } from 'lucide-react';
 import { calculateCapacity, encodeMessage, decodeMessage } from './utils/stegoEngine';
 import { encryptData, decryptData } from './utils/crypto';
@@ -38,7 +44,108 @@ import { encodeAudioLSB, decodeAudioLSB, calculateAudioCapacity } from './utils/
 import AnalysisDashboard from './components/AnalysisDashboard';
 import { AnalysisResult } from './types';
 
+// Hacking Intro Sequence Component
+const HackingIntro: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
+  const [logs, setLogs] = useState<string[]>([]);
+  const [phase, setPhase] = useState<'logging' | 'authorizing' | 'granted'>('logging');
+  
+  const bootMessages = [
+    "INITIALIZING STEGNOSAFE KERNEL V4.0.2...",
+    "CONNECTING TO SECURE NODE [127.8.4.1]...",
+    "BYPASSING METADATA FIREWALLS...",
+    "INJECTING LSB MODULATION MODULES...",
+    "SCATTERING BIT-PLANE INDICES...",
+    "MOUNTING AES-256 GCM SHIELDS...",
+    "SCANNING LOCAL CLUSTERS...",
+    "ESTABLISHING SECURE PROTOCOL...",
+    "CLEANING TEMPORARY REGISTRIES...",
+    "READY TO BREACH."
+  ];
+
+  useEffect(() => {
+    let currentLog = 0;
+    const logInterval = setInterval(() => {
+      if (currentLog < bootMessages.length) {
+        setLogs(prev => [...prev, `[SYSTEM] ${bootMessages[currentLog]}`]);
+        currentLog++;
+      } else {
+        clearInterval(logInterval);
+        setTimeout(() => setPhase('authorizing'), 800);
+      }
+    }, 250);
+
+    return () => clearInterval(logInterval);
+  }, []);
+
+  useEffect(() => {
+    if (phase === 'authorizing') {
+      setTimeout(() => setPhase('granted'), 1500);
+    }
+    if (phase === 'granted') {
+      setTimeout(onComplete, 1200);
+    }
+  }, [phase, onComplete]);
+
+  return (
+    <div className="fixed inset-0 z-[1000] bg-[#020617] flex flex-col items-center justify-center font-mono overflow-hidden">
+      <div className="absolute inset-0 opacity-10 pointer-events-none">
+        <div className="w-full h-full bg-[radial-gradient(circle_at_center,_#4f46e5_0%,_transparent_70%)] animate-pulse" />
+      </div>
+
+      <div className="w-full max-w-2xl px-12 space-y-8 relative z-10">
+        {phase === 'logging' && (
+          <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {logs.map((log, i) => (
+              <div key={i} className="flex gap-4 text-xs font-bold tracking-widest">
+                <span className="text-indigo-500">>></span>
+                <span className="text-slate-300">{log}</span>
+              </div>
+            ))}
+            <div className="flex gap-4 text-xs font-black animate-pulse">
+              <span className="text-indigo-500">>></span>
+              <span className="text-white">_</span>
+            </div>
+          </div>
+        )}
+
+        {phase === 'authorizing' && (
+          <div className="flex flex-col items-center gap-8 animate-in zoom-in-95 duration-700">
+            <div className="relative">
+              <div className="w-32 h-32 bg-indigo-600/10 rounded-3xl border border-indigo-500/30 flex items-center justify-center text-indigo-500">
+                <Fingerprint className="w-16 h-16 animate-pulse" />
+              </div>
+              <div className="absolute inset-x-0 -bottom-4 h-0.5 bg-indigo-500 animate-[bounce_2s_infinite]" />
+            </div>
+            <div className="text-center space-y-2">
+              <h2 className="text-xl font-black text-white uppercase tracking-[0.4em]">Biometric Auth</h2>
+              <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest animate-pulse">Verifying Access Keys...</p>
+            </div>
+          </div>
+        )}
+
+        {phase === 'granted' && (
+          <div className="flex flex-col items-center gap-8 animate-in scale-110 duration-700">
+             <div className="w-32 h-32 bg-emerald-600/20 rounded-full flex items-center justify-center text-emerald-500 border border-emerald-500/50 shadow-[0_0_50px_rgba(16,185,129,0.3)]">
+                <CheckCircle2 className="w-20 h-20" />
+             </div>
+             <div className="text-center space-y-2">
+              <h2 className="text-2xl font-black text-white uppercase tracking-[0.5em] italic">Access Granted</h2>
+              <p className="text-xs text-emerald-400 font-bold uppercase tracking-[0.3em]">Protocol Unlocked</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="absolute inset-0 pointer-events-none flex flex-col justify-between">
+         <div className="h-px w-full bg-white/5 animate-[glitch_4s_infinite]" />
+         <div className="h-px w-full bg-indigo-500/10 animate-[glitch_7s_infinite_reverse]" />
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
+  const [isBooting, setIsBooting] = useState(true);
   const [modality, setModality] = useState<'image' | 'audio'>('image');
   const [view, setView] = useState<'hub' | 'forensics'>('hub');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -57,20 +164,21 @@ const App: React.FC = () => {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   // Shared State
+  const [payloadType, setPayloadType] = useState<'text' | 'file'>('text');
   const [message, setMessage] = useState('');
+  const [secretFile, setSecretFile] = useState<File | null>(null);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [result, setResult] = useState<{ type: 'success' | 'error'; text: string; raw?: Uint8Array } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [metadata, setMetadata] = useState<any>(null);
   const [stats, setStats] = useState<ForensicStats | null>(null);
 
   useEffect(() => {
-    document.body.className = theme === 'dark' ? 'bg-[#0f172a] text-slate-100' : 'bg-slate-50 text-slate-900';
+    document.body.className = theme === 'dark' ? 'bg-[#0f172a] text-slate-100 transition-colors duration-500' : 'bg-slate-50 text-slate-900 transition-colors duration-500';
   }, [theme]);
 
-  // Cleanup audio URLs
   useEffect(() => {
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -118,7 +226,7 @@ const App: React.FC = () => {
         setStegoAudio(null);
         setImage(null);
         setStegoImage(null);
-        setStats(null); // Audio stats implementation pending
+        setStats(null);
       };
       reader.readAsArrayBuffer(file);
     } else {
@@ -126,25 +234,25 @@ const App: React.FC = () => {
     }
   };
 
-  const handleForensicsTrigger = async () => {
-    if (!image) return;
-    setView('forensics');
-    setIsProcessing(true);
-    try {
-      const res = await analyzeImageWithAI(image, rawFile?.type || 'image/png');
-      setAiResult(res);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const handleEncode = async () => {
-    if (!message) return;
+    if (payloadType === 'text' && !message) return;
+    if (payloadType === 'file' && !secretFile) return;
+
     setIsProcessing(true);
     setResult(null);
     try {
+      let finalPayload: Uint8Array;
+      if (payloadType === 'text') {
+        finalPayload = new TextEncoder().encode(message);
+      } else {
+        const buf = await secretFile!.arrayBuffer();
+        finalPayload = new Uint8Array(buf);
+      }
+
+      if (password) {
+        finalPayload = await encryptData(finalPayload, password);
+      }
+
       if (modality === 'image' && image) {
         const img = new Image();
         img.src = image;
@@ -154,17 +262,17 @@ const App: React.FC = () => {
         const ctx = canvas.getContext('2d')!;
         ctx.drawImage(img, 0, 0);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const payload = password ? await encryptData(message, password) : new TextEncoder().encode(message);
-        const encoded = encodeMessage(imageData, payload, password);
+        
+        const encoded = encodeMessage(imageData, finalPayload, password);
         ctx.putImageData(encoded, 0, 0);
         setStegoImage(canvas.toDataURL('image/png'));
-        setResult({ type: 'success', text: `Scattered LSB seal active. ${payload.length} bytes hidden.` });
+        setResult({ type: 'success', text: `Scattered LSB seal active. ${finalPayload.length} bytes hidden.` });
         setStats(calculateForensicStats(canvas));
       } else if (modality === 'audio' && audioBuffer) {
-        const encodedBuf = encodeAudioLSB(audioBuffer, message);
+        const encodedBuf = encodeAudioLSB(audioBuffer, finalPayload);
         const blob = new Blob([encodedBuf], { type: 'audio/wav' });
         setStegoAudio(blob);
-        setResult({ type: 'success', text: `Audio bit-plane modulated. Message hidden in PCM stream.` });
+        setResult({ type: 'success', text: `Audio modulated. ${finalPayload.length} bytes hidden in PCM stream.` });
       }
     } catch (err: any) {
       setResult({ type: 'error', text: err.message });
@@ -177,6 +285,7 @@ const App: React.FC = () => {
     setIsProcessing(true);
     setResult(null);
     try {
+      let decodedBytes: Uint8Array;
       if (modality === 'image' && image) {
         const img = new Image();
         img.src = image;
@@ -186,13 +295,23 @@ const App: React.FC = () => {
         const ctx = canvas.getContext('2d')!;
         ctx.drawImage(img, 0, 0);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const decodedBytes = decodeMessage(imageData, password);
-        const final = password ? await decryptData(decodedBytes, password) : new TextDecoder().decode(decodedBytes);
-        setResult({ type: 'success', text: final });
+        decodedBytes = decodeMessage(imageData, password);
       } else if (modality === 'audio' && audioBuffer) {
-        const secret = decodeAudioLSB(audioBuffer);
-        setResult({ type: 'success', text: secret || "No signal detected." });
+        decodedBytes = decodeAudioLSB(audioBuffer);
+      } else {
+        throw new Error("No carrier loaded.");
       }
+
+      const finalBytes = password ? await decryptData(decodedBytes, password) : decodedBytes;
+      
+      let textPreview = "";
+      try {
+        textPreview = new TextDecoder().decode(finalBytes);
+      } catch {
+        textPreview = "[Binary Stream - Download to Recover]";
+      }
+
+      setResult({ type: 'success', text: textPreview, raw: finalBytes });
     } catch (err: any) {
       setResult({ type: 'error', text: err.message });
     } finally {
@@ -200,12 +319,41 @@ const App: React.FC = () => {
     }
   };
 
+  const handleForensicsTrigger = async () => {
+    if (!image || !rawFile) return;
+    setView('forensics');
+    setIsProcessing(true);
+    try {
+      const result = await analyzeImageWithAI(image, rawFile.type);
+      setAiResult(result);
+    } catch (err: any) {
+      console.error("AI Forensic analysis reported error:", err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDownloadRecovered = () => {
+    if (!result?.raw) return;
+    const blob = new Blob([result.raw], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `recovered_payload_${Date.now()}.bin`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const resetAll = () => {
     setImage(null); setAudioBuffer(null); setRawFile(null); setMetadata(null);
-    setMessage(''); setPassword(''); setStegoImage(null); setStegoAudio(null);
+    setMessage(''); setSecretFile(null); setPassword(''); setStegoImage(null); setStegoAudio(null);
     setResult(null); if (audioUrl) URL.revokeObjectURL(audioUrl); setAudioUrl(null);
     setCapacity(0); setStats(null);
   };
+
+  if (isBooting) {
+    return <HackingIntro onComplete={() => setIsBooting(false)} />;
+  }
 
   if (view === 'forensics' && image) {
     return <AnalysisDashboard 
@@ -258,11 +406,11 @@ const App: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           {/* LEFT COLUMN: Input Control & Stats */}
-          <section className="lg:col-span-4 space-y-8 animate-in slide-in-from-left-4 duration-700">
+          <section className="lg:col-span-4 space-y-8">
             {/* Stats Panel */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-[2.5rem] p-8 space-y-8 backdrop-blur-md shadow-2xl relative overflow-hidden group">
-               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                  <BarChart3 className="w-32 h-32 text-white" />
+               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-white">
+                  <BarChart3 className="w-32 h-32" />
                </div>
                <div className="flex items-center gap-3 border-b border-white/5 pb-4">
                   <Activity className="w-5 h-5 text-indigo-500" />
@@ -294,21 +442,6 @@ const App: React.FC = () => {
                      </div>
                   </div>
 
-                  <div className="space-y-4">
-                     <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-widest text-slate-500">
-                        <span>Payload Risk Index</span>
-                        <span className={`text-sm ${message.length > (capacity * 0.1) ? 'text-red-500' : 'text-indigo-400'}`}>
-                          {capacity > 0 ? `${((message.length / capacity) * 100).toFixed(1)}%` : 'LOW'}
-                        </span>
-                     </div>
-                     <div className="h-2 bg-black/40 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full transition-all duration-500 ${message.length > (capacity * 0.1) ? 'bg-red-500' : 'bg-indigo-500'}`} 
-                          style={{ width: `${capacity > 0 ? Math.min((message.length / capacity) * 100, 100) : 0}%` }} 
-                        />
-                     </div>
-                  </div>
-
                   <div className="p-5 bg-indigo-500/5 rounded-2xl border border-indigo-500/10 space-y-4">
                      <div className="flex items-center gap-2">
                         <Terminal className="w-4 h-4 text-indigo-400" />
@@ -316,7 +449,6 @@ const App: React.FC = () => {
                      </div>
                      <div className="font-mono text-xs space-y-2.5 text-slate-500">
                         <div className="flex justify-between"><span>MODULATION:</span> <span className="text-slate-300">SCATTERED LSB</span></div>
-                        <div className="flex justify-between"><span>PACKET SIZE:</span> <span className="text-slate-300">{message.length} B</span></div>
                         <div className="flex justify-between"><span>ECC STATUS:</span> <span className="text-emerald-500">ACTIVE</span></div>
                         <div className="flex justify-between"><span>SEEDING:</span> <span className={password ? 'text-emerald-500' : 'text-amber-500'}>{password ? 'LOCKED' : 'WEAK'}</span></div>
                      </div>
@@ -338,7 +470,7 @@ const App: React.FC = () => {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Set password for AES-256..."
+                  placeholder="Set password for encryption..."
                   className="w-full bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-2xl py-6 px-8 text-sm font-mono outline-none focus:border-indigo-500/50 transition-all shadow-inner"
                 />
                 <button onClick={() => setShowPassword(!showPassword)} className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-500 transition-colors">
@@ -349,7 +481,7 @@ const App: React.FC = () => {
           </section>
 
           {/* MIDDLE COLUMN: Carrier Preview */}
-          <section className="lg:col-span-5 space-y-8 animate-in fade-in duration-700">
+          <section className="lg:col-span-5 space-y-8">
             <div className="bg-white dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800/50 rounded-[3rem] p-10 shadow-2xl backdrop-blur-sm relative group overflow-hidden h-full flex flex-col">
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400 flex items-center gap-3">
@@ -370,7 +502,7 @@ const App: React.FC = () => {
                 onClick={() => document.getElementById('mainFile')?.click()}
               >
                 {modality === 'image' && image ? (
-                  <img src={image} className="w-full max-h-[400px] object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-500" />
+                  <img src={image} className="w-full max-h-[400px] object-contain rounded-2xl shadow-2xl animate-in zoom-in-95" />
                 ) : modality === 'audio' && audioUrl ? (
                   <div className="w-full px-12 space-y-8 flex flex-col items-center">
                     <div className="w-28 h-28 bg-indigo-600/10 rounded-full flex items-center justify-center animate-pulse">
@@ -403,45 +535,80 @@ const App: React.FC = () => {
           </section>
 
           {/* RIGHT COLUMN: Signal Terminal */}
-          <section className="lg:col-span-3 flex flex-col gap-8 animate-in slide-in-from-right-4 duration-700">
+          <section className="lg:col-span-3 flex flex-col gap-8">
             <div className="bg-white dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800/50 rounded-[3rem] p-10 shadow-2xl backdrop-blur-sm flex-1 flex flex-col gap-10">
-              <div className="flex items-center gap-4">
-                <div className="p-4 bg-indigo-600/10 rounded-2xl text-indigo-500"><FileText className="w-6 h-6" /></div>
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] opacity-40">Signal Output</h3>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 bg-indigo-600/10 rounded-2xl text-indigo-500"><FileText className="w-6 h-6" /></div>
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] opacity-40">Payload</h3>
+                </div>
+                {activeTab === 'encode' && (
+                  <div className="flex bg-black/40 rounded-xl p-1 border border-slate-800">
+                    <button onClick={() => setPayloadType('text')} className={`p-2 rounded-lg transition-all ${payloadType === 'text' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`} title="Text Mode"><Type className="w-4 h-4" /></button>
+                    <button onClick={() => setPayloadType('file')} className={`p-2 rounded-lg transition-all ${payloadType === 'file' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`} title="File Mode"><Binary className="w-4 h-4" /></button>
+                  </div>
+                )}
               </div>
               
-              {activeTab === 'encode' ? (
-                <textarea 
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Enter secret message to hide..."
-                  className="flex-1 w-full bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-sm font-mono outline-none focus:border-indigo-500/50 resize-none custom-scrollbar leading-relaxed shadow-inner"
-                />
-              ) : (
-                <div className="flex-1 bg-black/60 rounded-[2.5rem] p-10 flex flex-col items-center justify-center text-center gap-8 border border-white/5 shadow-inner">
-                  {result?.type === 'success' ? (
-                    <div className="w-full space-y-6 animate-in fade-in duration-500">
-                      <div className="bg-slate-950/80 p-8 rounded-2xl border border-emerald-500/20 font-mono text-xs text-emerald-400 break-all leading-relaxed max-h-[300px] overflow-y-auto custom-scrollbar shadow-inner text-left">{result.text}</div>
-                      <button onClick={() => navigator.clipboard.writeText(result.text)} className="w-full py-4.5 bg-emerald-600/10 border border-emerald-500/40 text-emerald-400 rounded-2xl text-xs font-black uppercase tracking-[0.1em] hover:bg-emerald-600/20 transition-all active:scale-95">Copy Signal</button>
-                    </div>
+              <div className="flex-1 flex flex-col">
+                {activeTab === 'encode' ? (
+                  payloadType === 'text' ? (
+                    <textarea 
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder="Enter secret message to hide..."
+                      className="flex-1 w-full bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-sm font-mono outline-none focus:border-indigo-500/50 resize-none custom-scrollbar leading-relaxed shadow-inner"
+                    />
                   ) : (
-                    <div className="opacity-10 flex flex-col items-center gap-6">
-                      <Mic className="w-24 h-24 text-slate-400 animate-pulse" />
-                      <p className="text-xs font-black uppercase tracking-[0.4em] text-slate-400 text-center">Monitoring Frequency</p>
+                    <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-8 bg-slate-50 dark:bg-slate-950/80 hover:bg-slate-100 dark:hover:bg-slate-900/40 transition-all cursor-pointer" onClick={() => document.getElementById('payloadFileInput')?.click()}>
+                      <input type="file" id="payloadFileInput" className="hidden" onChange={(e) => setSecretFile(e.target.files?.[0] || null)} />
+                      {secretFile ? (
+                        <div className="flex flex-col items-center text-center gap-4 animate-in zoom-in-95">
+                          <FileIcon className="w-12 h-12 text-indigo-500" />
+                          <div>
+                            <p className="text-xs font-black uppercase text-white truncate max-w-[150px]">{secretFile.name}</p>
+                            <p className="text-[10px] font-mono text-slate-500">{(secretFile.size / 1024).toFixed(1)} KB</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-4 opacity-40">
+                          <Upload className="w-10 h-10" />
+                          <p className="text-[10px] font-black uppercase tracking-widest">Select Secret File</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
+                  )
+                ) : (
+                  <div className="flex-1 bg-black/60 rounded-[2.5rem] p-10 flex flex-col items-center justify-center text-center gap-8 border border-white/5 shadow-inner">
+                    {result?.type === 'success' ? (
+                      <div className="w-full space-y-6 animate-in fade-in duration-500">
+                        <div className="bg-slate-950/80 p-8 rounded-2xl border border-emerald-500/20 font-mono text-xs text-emerald-400 break-all leading-relaxed max-h-[300px] overflow-y-auto custom-scrollbar shadow-inner text-left">{result.text}</div>
+                        <div className="flex gap-2">
+                           {result.text !== "[Binary Stream - Download to Recover]" && (
+                             <button onClick={() => navigator.clipboard.writeText(result.text)} className="flex-1 py-4.5 bg-emerald-600/10 border border-emerald-500/40 text-emerald-400 rounded-2xl text-xs font-black uppercase tracking-[0.1em] hover:bg-emerald-600/20 transition-all active:scale-95">Copy Text</button>
+                           )}
+                           <button onClick={handleDownloadRecovered} className="flex-1 py-4.5 bg-indigo-600/10 border border-indigo-500/40 text-indigo-400 rounded-2xl text-xs font-black uppercase tracking-[0.1em] hover:bg-indigo-600/20 transition-all active:scale-95">Download Binary</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="opacity-10 flex flex-col items-center gap-6 text-white">
+                        <Mic className="w-24 h-24 animate-pulse" />
+                        <p className="text-xs font-black uppercase tracking-[0.4em] text-slate-400 text-center">Monitoring Frequency</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <button 
-                disabled={!rawFile || isProcessing || (activeTab === 'encode' && !message)}
+                disabled={!rawFile || isProcessing || (activeTab === 'encode' && (payloadType === 'text' ? !message : !secretFile))}
                 onClick={activeTab === 'encode' ? handleEncode : handleDecode}
                 className={`w-full py-6 rounded-[2rem] font-black text-sm uppercase tracking-[0.2em] flex items-center justify-center gap-4 shadow-2xl transition-all active:scale-[0.97] hover:brightness-110 ${
                   activeTab === 'encode' ? 'bg-indigo-600 text-white shadow-indigo-500/30' : 'bg-emerald-600 text-white shadow-emerald-500/30'
                 } disabled:opacity-20 disabled:cursor-not-allowed`}
               >
                 {isProcessing ? <RefreshCcw className="w-6 h-6 animate-spin" /> : activeTab === 'encode' ? <ShieldCheck className="w-6 h-6" /> : <Search className="w-6 h-6" />}
-                {activeTab === 'encode' ? `Embed` : `Recover`}
+                {activeTab === 'encode' ? `Embed Payload` : `Execute Recovery`}
               </button>
 
               {(stegoImage || stegoAudio) && (
@@ -463,7 +630,7 @@ const App: React.FC = () => {
                       }}
                       className="flex items-center justify-center gap-3 w-full py-5 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-xl"
                     >
-                      <Download className="w-5.5 h-5.5" /> Download
+                      <Download className="w-5.5 h-5.5" /> Download Stego-Object
                     </button>
                   </div>
                 </div>
@@ -486,11 +653,6 @@ const App: React.FC = () => {
               <span>&copy; 2026 StegnoSafe Labs // Forensic Protocol</span>
             </div>
             <span className="text-slate-400 dark:text-slate-500 ml-8">Developed by <span className="text-indigo-500 dark:text-indigo-400 font-black">Kunal Chachane</span></span>
-         </div>
-         <div className="flex gap-14">
-            <a href="#" className="hover:text-indigo-500 transition-colors">Forensic Docs</a>
-            <a href="#" className="hover:text-indigo-500 transition-colors">Privacy Shield</a>
-            <a href="#" className="hover:text-indigo-500 transition-colors">Security Audit</a>
          </div>
       </footer>
     </div>
